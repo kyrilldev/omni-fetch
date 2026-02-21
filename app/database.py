@@ -26,7 +26,7 @@ class Database:
         cursor = conn.cursor()
         
         # Maak van de dict een tekst-string (JSON)
-        selectors_string = json.dumps(selectors) 
+        selectors_string = json.dumps(selectors)
         
         cursor.execute(
             "INSERT INTO blueprints (api_id, selectors, url) VALUES (?, ?, ?)",
@@ -36,13 +36,13 @@ class Database:
         conn.close()
         return True
 
-    def get_blueprint(self, api_id: str): # Vergeet 'self' niet!
+    def get_blueprint(self, run_id: str): # Vergeet 'self' niet!
         conn = sqlite3.connect('omnifetch.db')
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
         try:
-            cursor.execute("SELECT * FROM blueprints WHERE api_id = ?", (api_id,))
+            cursor.execute("SELECT * FROM blueprints WHERE api_id = ?", (run_id,))
             row = cursor.fetchone()
             
             print(f"row: {row}")

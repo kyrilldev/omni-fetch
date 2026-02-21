@@ -17,10 +17,10 @@ class ScrapeResponse(BaseModel):
 class DetectSelectorRequest(BaseModel):
     url: HttpUrl
     user_prompt: str
-    
+
 class DetectSelectorResponse(BaseModel):
-    url: str
-    selectors: Dict[str, str]
+    url: str  # Verander website_url naar url voor consistentie
+    selectors: Dict[str, Any]
     success: bool = True
     error: Optional[str] = None
     

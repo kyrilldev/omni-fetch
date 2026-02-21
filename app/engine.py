@@ -54,6 +54,8 @@ class Engine:
             results = {}
             for field, selector in selectors.items():
                 node = tree.css_first(selector)
+                if not node:
+                    print(f"⚠️ Waarschuwing: Selector voor '{field}' ({selector}) vond niets op {url}")
                 results[field] = node.text(strip=True) if node else None
                 
             return results
@@ -119,51 +121,74 @@ class Engine:
             
         return model_list
     
-    async def extract_selectors(self, url: str, prompt="Geef me de naam van het kasteel en de eerste alinea tekst.",) -> Dict[str, str]:
+    async def extract_selectors(self, url: str, prompt="Geef me de titel en de eerste alinea.") -> Dict[str, str]:
         import ollama
+        import json
         await self._ensure_browser()
         self.llm_model = await self._ensure_llm()
         
-        # Create a fresh context for every request (better than a fresh browser)
         context = await self.browser.new_context(user_agent=self.user_agent)
-        
         page = await context.new_page()
 
         try:
-            # Block heavy stuff
-            await page.route("**/*", lambda route: route.abort() 
-                            if route.request.resource_type in ["image", "media", "font"] 
-                            else route.continue_())
-
             await page.goto(url, wait_until="domcontentloaded", timeout=30000)
             html_content = await page.content()
-            
             tree = HTMLParser(html_content)
             
-            for tag in tree.css('script, style, noscript, svg, nav, footer, header'):
+            # 1. Verwijder de rommel die we echt niet nodig hebben
+            for tag in tree.css('script, style, noscript, svg, nav, footer, header, iframe'):
                 tag.decompose()
             
-            only_text_website = tree.body.text(separator='\n', strip=True)
+            # 2. Verzamel ALLE tekst-bevattende elementen
+                simplified_blocks = []
+                
+                # We kijken naar alle elementen in de body
+                for el in tree.body.css('*'):
+                    # Pak de tekstuele inhoud
+                    content = el.text(strip=True)
+                    
+                    # Selectolax check: heeft dit element directe tekst kinderen?
+                    # We kijken of het element zelf tekst bevat, maar niet te groot is (ruis-filter)
+                    if content and len(content) < 500: 
+                        # Check of het element 'eindpunt' is (geen andere HTML tags erin)
+                        # In Selectolax gebruiken we el.child om te zien of er diepere nesting is
+                        if el.child is None or el.child.tag == "-text":
+                            tag_name = el.tag
+                            tag_class = f" class='{el.attributes.get('class')}'" if el.attributes.get('class') else ""
+                            tag_id = f" id='{el.attributes.get('id')}'" if el.attributes.get('id') else ""
+                            
+                            # Voeg het element toe als een compacte string
+                            simplified_blocks.append(f"<{tag_name}{tag_id}{tag_class}>{content}</{tag_name}>")
+
+            # Maak er één grote string van voor de AI
+            # We gebruiken een set() om duplicaten te voorkomen en joinen met newlines
+            html_skeleton = "\n".join(list(dict.fromkeys(simplified_blocks)))
             
+            # Limiteer de lengte (Llama 3.2 3B heeft een beperkt geheugen)
+            html_skeleton = html_skeleton[:10000] 
+
             system_instruction = (
-                "You are a data-extractor assistent. "
-                "Use the following text from the website to answer the questions of the user. "
-                "ALWAYS give the answer in pure JSON-format."
+                "You are a Web Scraping Expert. Extract CSS selectors for the user's request.\n"
+                "I provide a list of HTML elements that contain text. Your job is to pick the best CSS selector.\n"
+                "Rules:\n"
+                "1. Use the tags, IDs, and classes provided to build unique selectors.\n"
+                "2. Return ONLY a JSON object with the requested fields.\n"
+                "3. If a span is inside an h1, you can use 'h1 span' or just 'h1'.\n"
+                "4. Never return the text content, only the selectors."
             )
                 
             response = ollama.chat(
                 model=self.llm_model,
                 messages=[
-                    {'role': 'system', 'content': f"System Instruction: {system_instruction}"},
-                    {'role': 'user', 'content': f"Website text: {only_text_website}"},
+                    {'role': 'system', 'content': system_instruction},
+                    {'role': 'user', 'content': f"HTML Elements:\n{html_skeleton}"},
                     {'role': 'user', 'content': f"Opdracht: {prompt}"},
                 ],
                 format='json'
             )
-                
-            return response['message']['content']
+            
+            return json.loads(response['message']['content'])
 
         finally:
-            # ONLY close the page/context, keep the browser alive!
             await page.close()
             await context.close()

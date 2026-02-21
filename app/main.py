@@ -55,11 +55,11 @@ async def detect_selectors_endpoint(payload: DetectSelectorRequest):
         prompt = payload.user_prompt
         # TODO: Implementeer AI logica
         content = await omni_engine.extract_selectors(url, prompt)
+        print(f"content: {content}")
         
         import json
         content = json.loads(content)
         
-        print(f"content: {content}")
         return DetectSelectorResponse(url=url, selectors=content, success=True)
     except Exception as e:
         return DetectSelectorResponse(
@@ -72,32 +72,63 @@ async def detect_selectors_endpoint(payload: DetectSelectorRequest):
 @app.post("/api/v1/generate")
 async def generate_endpoint(payload: DetectSelectorRequest):
     import uuid
+    api_id = f"api-{str(uuid.uuid4())[:8]}"
+    local_link = f"http://localhost:8000/api/v1/run/{api_id}"
     try:
         # 1. Genereer een unieke ID voor dit endpoint
         # Bijv: 'weather-api-f47ac10b'
-        api_id = f"api-{str(uuid.uuid4())[:8]}"
         
         response = await detect_selectors_endpoint(payload=payload)
         
-        # 3. Bouw de lokale link
-        # In een echte app zou je de base_url dynamisch ophalen
-        local_link = f"http://localhost:8000/api/v1/run/{api_id}"
-        
-        success = db.save_blueprint(api_id=api_id, selectors=response.selectors, url=local_link)
+        success = db.save_blueprint(
+            api_id=api_id, 
+            selectors=response.selectors, 
+            url=str(payload.url) 
+        )
         
         return Blueprint(api_id=api_id, endpoint=local_link, success=success)
         
     except Exception as e:
         return Blueprint(api_id=api_id, endpoint=local_link, success=False, error=str(e))
 
-@app.get("/api/v1/run/{run_id}")
-async def dynamic_api_endpoint(api_id: str):
-    blueprint = db.get_blueprint(api_id)
+@app.get("/api/v1/run/{run_id}", response_model=ScrapeResponse)
+async def dynamic_api_endpoint(run_id: str):
+    # 1. Haal de blauwdruk op uit de database
+    blueprint = db.get_blueprint(run_id)
+    
+    # 2. Error handling als de ID niet bestaat
     if not blueprint:
-        raise HTTPException(status_code=404, detail="Blueprint not found")
-    #execute extract data function
-    
-    
+        return ScrapeResponse(
+            url="unknown",
+            data={}, # Lege dict voor de resultaten
+            success=False,
+            error=f"Blueprint met ID {run_id} niet gevonden in de database."
+        )
+
+    try: 
+        # 3. Pak de bron-URL en de opgeslagen selectors
+        target_url = blueprint['url']
+        saved_selectors = blueprint['selectors']
+        
+        # 4. Voer de daadwerkelijke scraping uit met de Engine
+        # results bevat nu de tekst die bij de selectors hoort
+        results = await omni_engine.extract_data(target_url, saved_selectors)
+        
+        # 5. Geef het resultaat terug in het ScrapeResponse formaat
+        return ScrapeResponse(
+            url=target_url,
+            data=results,  # De gescrapete tekst (bijv. {"titel": "Kasteel Karlstein"})
+            success=True
+        )
+        
+    except Exception as e:
+        # 6. Fallback voor als de website offline is of de scraping faalt
+        return ScrapeResponse(
+            url=blueprint.get('url', "unknown"),
+            data={},
+            success=False,
+            error=f"Scraping fout: {str(e)}"
+        )
 
 # 3. Optioneel: Sluit de browser netjes af als de server stopt
 @app.on_event("shutdown")
