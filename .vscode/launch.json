@@ -1,0 +1,14 @@
+{
+    "configurations": [
+        {
+            "name": "Python Debugger: FastAPI",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": [
+                "app.main:app",
+            ],
+            "jinja": true
+        }
+    ]
+}

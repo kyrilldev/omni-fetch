@@ -1,5 +1,10 @@
 import asyncio
 import sys
+
+# Windows-specifieke fix voor Playwright NotImplementedError
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 from fastapi import FastAPI, HTTPException
 from app.database import Database
 from app.schemas import ScrapeRequest, ScrapeResponse, DetectSelectorRequest, DetectSelectorResponse, Blueprint
@@ -56,9 +61,6 @@ async def detect_selectors_endpoint(payload: DetectSelectorRequest):
         # TODO: Implementeer AI logica
         content = await omni_engine.extract_selectors(url, prompt)
         print(f"content: {content}")
-        
-        import json
-        content = json.loads(content)
         
         return DetectSelectorResponse(url=url, selectors=content, success=True)
     except Exception as e:
@@ -134,3 +136,4 @@ async def dynamic_api_endpoint(run_id: str):
 @app.on_event("shutdown")
 async def shutdown_event():
     await omni_engine.shutdown()
+    
