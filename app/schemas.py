@@ -23,3 +23,14 @@ class DetectSelectorResponse(BaseModel):
     selectors: Dict[str, str]
     success: bool = True
     error: Optional[str] = None
+    
+class DynamicEndpointRequest(BaseModel):
+    api_id: str
+    prompt: str
+    url: str
+    
+class Blueprint(BaseModel):
+    api_id: str
+    endpoint: str
+    success: bool = True
+    error: Optional[str] = None

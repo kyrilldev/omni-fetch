@@ -9,6 +9,10 @@ class Engine:
         self.user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
         
         self.llm_model = None
+        
+    async def setup(self):
+        self._ensure_browser()
+        self.llm_model = await self._ensure_llm()
 
     async def _ensure_browser(self):
         """Helper to ensure browser is running without async __init__"""
@@ -32,7 +36,6 @@ class Engine:
         
         # Create a fresh context for every request (better than a fresh browser)
         context = await self.browser.new_context(user_agent=self.user_agent)
-        
         
         page = await context.new_page()
 
@@ -72,9 +75,10 @@ class Engine:
         
         try:
             
+            print("here")
+            print(models)
             model_string = models.models[0]['model']
             
-            print(model_string)
             
             self._preload_model(model_string)
             
@@ -92,6 +96,8 @@ class Engine:
         import ollama
         
         model_list = ollama.list()
+        
+        print("here2")
         
         if len(model_list.models) <= 0:
             for progress in ollama.pull('llama3.2'):
@@ -116,7 +122,7 @@ class Engine:
     async def extract_selectors(self, url: str, prompt="Geef me de naam van het kasteel en de eerste alinea tekst.",) -> Dict[str, str]:
         import ollama
         await self._ensure_browser()
-        model_name = await self._ensure_llm()
+        self.llm_model = await self._ensure_llm()
         
         # Create a fresh context for every request (better than a fresh browser)
         context = await self.browser.new_context(user_agent=self.user_agent)
@@ -146,8 +152,9 @@ class Engine:
             )
                 
             response = ollama.chat(
-                model=model_name,
+                model=self.llm_model,
                 messages=[
+                    {'role': 'system', 'content': f"System Instruction: {system_instruction}"},
                     {'role': 'user', 'content': f"Website text: {only_text_website}"},
                     {'role': 'user', 'content': f"Opdracht: {prompt}"},
                 ],
