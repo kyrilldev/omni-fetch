@@ -102,7 +102,7 @@ class Engine:
         print("here2")
         
         if len(model_list.models) <= 0:
-            for progress in ollama.pull('llama3.2:3b'):
+            for progress in ollama.pull('llama3.2'):
                 status = progress.get('status')
                 digest = progress.get('digest')
                 total = progress.get('total')
