@@ -25,7 +25,7 @@ app = FastAPI(
 # 2. Maak één globale instance van de Engine (Singleton-patroon)
 # Dit zorgt ervoor dat je browser open blijft en snel is.
 
-omni_engine = Engine()
+omni_engine = Engine(True)
 omni_engine.setup()
 
 db = Database()

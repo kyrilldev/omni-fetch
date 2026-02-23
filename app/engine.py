@@ -1,14 +1,18 @@
 from playwright.async_api import async_playwright
 from selectolax.parser import HTMLParser
 from typing import Dict, Any
+import openai
+import pprint
 
 class Engine:
-    def __init__(self):
+    def __init__(self, cloud):
         self.browser = None
         self.playwright = None
         self.user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
         
         self.llm_model = None
+        self.cloud = cloud
+        self.client = openai.OpenAI(api_key="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", base_url="https://openrouter.ai/api/v1")
         
     async def setup(self):
         self._ensure_browser()
@@ -73,14 +77,13 @@ class Engine:
             await self.playwright.stop()
             
     async def _ensure_llm(self):
+        if self.cloud:
+            return
+        
         models = await self._check_models()
         
         try:
-            
-            print("here")
-            print(models)
             model_string = models.models[0]['model']
-            
             
             self._preload_model(model_string)
             
@@ -131,8 +134,14 @@ class Engine:
         page = await context.new_page()
 
         try:
-            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            await page.goto(url, wait_until="networkidle", timeout=30000)
             html_content = await page.content()
+            
+            pprint.pp(html_content)
+            
+            with open("html_content.txt", "w", encoding="utf-8") as f:
+                f.write(html_content)
+            
             tree = HTMLParser(html_content)
             
             # 1. Verwijder de rommel die we echt niet nodig hebben
@@ -163,9 +172,6 @@ class Engine:
             # Maak er één grote string van voor de AI
             # We gebruiken een set() om duplicaten te voorkomen en joinen met newlines
             html_skeleton = "\n".join(list(dict.fromkeys(simplified_blocks)))
-            
-            # Limiteer de lengte (Llama 3.2 3B heeft een beperkt geheugen)
-            html_skeleton = html_skeleton[:10000] 
 
             system_instruction = (
                 "You are a Web Scraping Expert. Extract CSS selectors for the user's request.\n"
@@ -173,21 +179,38 @@ class Engine:
                 "Rules:\n"
                 "1. Use the tags, IDs, and classes provided to build unique selectors.\n"
                 "2. Return ONLY a JSON object with the requested fields.\n"
-                "3. If a span is inside an h1, you can use 'h1 span' or just 'h1'.\n"
-                "4. Never return the text content, only the selectors."
-            )
-                
-            response = ollama.chat(
-                model=self.llm_model,
-                messages=[
-                    {'role': 'system', 'content': system_instruction},
-                    {'role': 'user', 'content': f"HTML Elements:\n{html_skeleton}"},
-                    {'role': 'user', 'content': f"Opdracht: {prompt}"},
-                ],
-                format='json'
+                "3. Never return the text content, only the selectors."
             )
             
-            return json.loads(response['message']['content'])
+            if self.cloud:
+                try: 
+                    pprint.pp(html_skeleton)
+                    cloud_response = self.client.chat.completions.create(
+                        # model="openai/gpt-oss-120b:free",
+                        model="minimax/minimax-m2.5",
+                        messages=[
+                            {'role': 'system', 'content': system_instruction},
+                            {'role': 'user', 'content': f"HTML Elements:\n{html_skeleton}"},
+                            {'role': 'user', 'content': f"Opdracht: {prompt}"},
+                        ],
+                        )
+                    
+                    pprint.pp(cloud_response.choices[0].message.content)
+                    
+                    return json.loads(cloud_response.choices[0].message.content)
+                except Exception as e:
+                    return {"error": str(e)}
+            else:
+                response = ollama.chat(
+                    model=self.llm_model,
+                    messages=[
+                        {'role': 'system', 'content': system_instruction},
+                        {'role': 'user', 'content': f"HTML Elements:\n{html_skeleton}"},
+                        {'role': 'user', 'content': f"Opdracht: {prompt}"},
+                    ],
+                    format='json'
+                )
+                return json.loads(response['message']['content'])
 
         finally:
             await page.close()
