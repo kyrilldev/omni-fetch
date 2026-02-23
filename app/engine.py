@@ -3,6 +3,8 @@ from selectolax.parser import HTMLParser
 from typing import Dict, Any
 import openai
 import pprint
+from dotenv import load_dotenv
+import os
 
 class Engine:
     def __init__(self, cloud):
@@ -12,7 +14,7 @@ class Engine:
         
         self.llm_model = None
         self.cloud = cloud
-        self.client = openai.OpenAI(api_key="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", base_url="https://openrouter.ai/api/v1")
+        self.client = openai.OpenAI(api_key=os.getenv("OPENROUTER_API"), base_url=os.getenv("OPENROUTER_URL"))
         
     async def setup(self):
         self._ensure_browser()
